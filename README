@@ -1,4 +1,31 @@
-PsuedoConn Pcap Generator
+### Overview ###
 
-Documentation to follow.  For now just look at the examples in the samples
-directory.
+Thank you for accepting the Pindrop Tooling Team coding challenge! 
+
+The PseudoConn project in this repository is a framework for creating both sides
+(ie, client and server) of network traffic. Abstraction closely follows the
+typical network stack. All payloads are generated in pure Ruby; no additional
+dependencies are used to create Ethernet frames and PCAP files.
+
+The /samples/ directory holds working examples of the framework in action. A
+tool such as Wireshark can be used to verify the output of this framework.
+
+### Technical Challenge ###
+
+Fork this repository and either:
+A.) implement support for a protocol of your choice, or
+B.) extend a protocol already implemented in this framework
+
+Please compose a corresponding example in /samples/ to demonstrate its use. We
+will use a recent version of Wireshark to view the output of your example, so
+be sure to pick a protocol and/or feature set that Wireshark supports.
+
+We don't want you to spend more than a couple hours on this exercise, so please
+implement as much or as little as you think is necessary to highlight your
+abilities.
+
+***Submit your work as a Pull Request from your fork back to this repository.***
+
+Please include documentation in your Pull Request detailing what you chose to
+implement. 
+
