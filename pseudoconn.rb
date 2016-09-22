@@ -12,6 +12,8 @@ class PseudoConn
   # connection over IPv4 or IPv6.
   class Connection
 
+    BROADCAST_IP = "\xff\xff\xff\xff"
+    BROADCAST_MAC = "\xff\xff\xff\xff\xff\xff"
     DEFAULTS = { :transport => :tcp, :ack => false, :mtu => 1500,
                  :src_port => nil, :src_seq => 0x0FFFFFFF,
                  :dst_port => 1025, :dst_seq => 0x7FFFFFFF, :ipv6 => false,
@@ -25,9 +27,9 @@ class PseudoConn
 
       # Three-way handshake if necessary
       if @opts[:transport] == :tcp
-        frame(:client, nil, :syn)
-        frame(:server, nil, :syn_ack)
-        frame(:client, nil, :ack)
+        frame(:client, nil, [], :syn)
+        frame(:server, nil, [], :syn_ack)
+        frame(:client, nil, [], :ack)
       end
 
       # Run the client's methods and close the connection if a block is provided
@@ -91,31 +93,31 @@ class PseudoConn
 
     def close
       if @opts[:transport] == :tcp
-        frame(:client, nil, :fin)
-        frame(:server, nil, :fin)
-        frame(:client, nil, :ack)
+        frame(:client, nil, [], :fin)
+        frame(:server, nil, [], :fin)
+        frame(:client, nil, [], :ack)
       end
     end
 
     def reset
       if @opts[:transport] == :tcp
-        frame(:client, nil, :rst)
+        frame(:client, nil, [], :rst)
       end
     end
 
-    def client(data)
-      frame(:client, data)
+    def client(data, *options)
+      frame(:client, data, options)
     end
 
-    def server(data)
-      frame(:server, data)
+    def server(data, *options)
+      frame(:server, data, options)
     end
 
     def insert_delay(sec)
       @owner.timestamp += sec.to_f
     end
 
-    def frame(direction, data, *flags)
+    def frame(direction, data, options, *tcp_flags)
       data ||= ''
       ipsum_offset = nil
 
@@ -130,7 +132,7 @@ class PseudoConn
         pieces = (data.length + split_len - 1) / split_len
         ret = ''
         pieces.times do |i|
-          ret << frame(direction, data[split_len * i, split_len], *flags)
+          ret << frame(direction, data[split_len * i, split_len], options, *tcp_flags)
         end
         return ret
       end
@@ -143,8 +145,9 @@ class PseudoConn
         src, dst = 1, 0
       end
 
-      # Ethernet header
-      ret = @mac[dst] + @mac[src]    # src MAC, dst MAC
+      # Ethernet 
+      mac_dst = options.include?(:mac_broadcast) ? BROADCAST_MAC : @mac[dst]
+      ret = mac_dst + @mac[src]    # dst MAC, src MAC
       if @opts[:ipv6]
         ret << "\x86\xdd"
       else
@@ -185,7 +188,8 @@ class PseudoConn
         ret << (@opts[:transport] == :tcp ? "\x06" : "\x11")  # Protocol
         ipsum_offset = ret.length
         ret << "\0\0"                              # Checksum placeholder
-        ret << "#{@ip[src]}#{@ip[dst]}"            # IP addresses
+        ip_dst = options.include?(:ipv4_broadcast) ? BROADCAST_IP : @ip[dst]
+        ret << "#{@ip[src]}#{ip_dst}"            # IP addresses
         ret << @opts[:optional_ipv4_header]
       end
 
@@ -194,13 +198,13 @@ class PseudoConn
         ret << "#{itons(@port[src])}#{itons(@port[dst])}"   # ports
         ret << itonl(@seq[src])                 # Sequence number
         ack = @seq[dst]
-        ack = 0 if flags.include?(:syn)
+        ack = 0 if tcp_flags.include?(:syn)
         ret << itonl(ack)                       # ACK
         tf = 0x10    # ACK
-        tf = 0x02 if flags.include?(:syn)
-        tf += 0x02 if flags.include?(:syn_ack)
-        tf += 0x01 if flags.include?(:fin)
-        tf += 0x04 if flags.include?(:rst)
+        tf = 0x02 if tcp_flags.include?(:syn)
+        tf += 0x02 if tcp_flags.include?(:syn_ack)
+        tf += 0x01 if tcp_flags.include?(:fin)
+        tf += 0x04 if tcp_flags.include?(:rst)
         ret << "\x50#{tf.chr}\x80\x00"          # hdr_len, flags, window
         tcpsum_offset = ret.length
         ret << "\x00\x00\x00\x00"               # checksum, URG pointer
@@ -208,8 +212,8 @@ class PseudoConn
 
         # Update the sequence number as needed
         seq_inc = data.length
-        seq_inc += 1 if flags.include?(:syn) or flags.include?(:syn_ack) or
-                        flags.include?(:fin)
+        seq_inc += 1 if tcp_flags.include?(:syn) or tcp_flags.include?(:syn_ack) or
+                        tcp_flags.include?(:fin)
         @seq[src] = (@seq[src] + seq_inc) % (2**32)
 
         # TCP Checksum
@@ -269,11 +273,11 @@ class PseudoConn
     protected
 
     # Send this content on directly, or "explain" it.  ADD CODE HERE
-    def proto_client(data)
-      client(data)
+    def proto_client(data, *options)
+      client(data, *options)
     end
-    def proto_server(data)
-      server(data)
+    def proto_server(data, *options)
+      server(data, *options)
     end
     def proto_insert_delay(sec)
       insert_delay(sec)
